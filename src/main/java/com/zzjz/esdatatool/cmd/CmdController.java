@@ -9,7 +9,8 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.bind.annotation.RestController;
-
+import java.io.IOException;
+import java.util.concurrent.CopyOnWriteArraySet;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -33,12 +34,15 @@ public class CmdController {
     /**
      * 备份es表
      * @param index 索引名
+     * @param separator 分隔符(一般是-或_)
      * @param dates 日期(可以是2019.10.01也可以是2018.10.01-2018.10.12)
      * @return 结果
      */
-    @RequestMapping(value = "backup/{index}/{dates}", method = RequestMethod.GET)
-    public String backup(@PathVariable("index") String index, @PathVariable("dates") String dates) throws InterruptedException {
-        System.out.println("准备执行backup,index为" + index + ",datas为" + dates);
+    @RequestMapping(value = "backup/{index}/{separator}/{dates}", method = RequestMethod.GET)
+    public String backup(@PathVariable("index") String index,
+                         @PathVariable("separator") String separator, @PathVariable("dates") String dates) throws InterruptedException, IOException {
+        String msg = "准备执行backup,index为" + index + ",datas为" + dates;
+        sendMessageToAll(msg);
         DateTimeFormatter format = DateTimeFormat.forPattern("yyyy.MM.dd");
         //5个线程去跑命令
         ExecutorService executorService = Executors.newFixedThreadPool(threadNum);
@@ -54,7 +58,7 @@ public class CmdController {
                 //有-t会报cannot enable tty mode on non tty input,即 在非TTY输入上不能启用TTY模式
                 //有-i会导致命令执行完但不释放线程,导致线程卡死
                 String cmd = "docker run --rm --net=host -v " + dumpDst + ":/tmp " + dumpImg +" \\\n" +
-                        "  --input=http://es1:9200/" + index + "-" + startTime.toString(format) + " \\\n" +
+                        "  --input=http://es1:9200/" + index + separator + startTime.toString(format) + " \\\n" +
                         "  --output=/tmp/" + index + "-" + startTime.toString(format) + ".json \\\n" +
                         "  --type=data";
                 CmdRunner command = new CmdRunner(cmd);
@@ -63,7 +67,7 @@ public class CmdController {
             }
         } else {
             String cmd = "docker run --rm --net=host -v " + dumpDst + ":/tmp " + dumpImg +" \\\n" +
-                    "  --input=http://es1:9200/" +index + "-" + dates + " \\\n" +
+                    "  --input=http://es1:9200/" +index + separator + dates + " \\\n" +
                     "  --output=/tmp/" + index + "-" + dates + ".json \\\n" +
                     "  --type=data";
             CmdRunner command = new CmdRunner(cmd);
@@ -73,7 +77,8 @@ public class CmdController {
         executorService.shutdown();
         while (true) {
             if (executorService.isTerminated()) {
-                System.out.println("所有的子线程都结束了,任务完成");
+                String overMsg = "所有的子线程都结束了,任务完成";
+                sendMessageToAll(overMsg);
                 break;
             }
             Thread.sleep(1000);
@@ -81,4 +86,16 @@ public class CmdController {
         return "备份任务下发成功!";
     }
 
+    /**
+     * 群发消息至每个客户端
+     * @param msg 消息
+     * @throws IOException IOException
+     */
+    public static void sendMessageToAll(String msg) throws IOException {
+        System.out.println(msg);
+        CopyOnWriteArraySet<MyWebSocket> webSockets = MyWebSocket.getWebSocket();
+        for (MyWebSocket myWebSocket : webSockets) {
+            myWebSocket.sendMessage(msg);
+        }
+    }
 }

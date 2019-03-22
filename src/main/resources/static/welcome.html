@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html >
+<head>
+    <meta charset="UTF-8">
+    <title>Getting Started: Serving Web Content</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.3.1/jquery.min.js"></script>
+    <script>
+        var websocket = null;
+        if('WebSocket' in window){
+            websocket = new WebSocket('ws://localhost:8082/websocket');
+        }else{
+            alert("该浏览器不支持WebSocket");
+        }
+
+        websocket.onopen = function (event) {
+            console.log("建立连接");
+        };
+
+        websocket.onclose = function (event) {
+            console.log("断开连接");
+        };
+
+        websocket.onmessage = function (event) {
+            console.log("收到消息" + event.data);
+            var div = document.createElement('div');
+            div.innerHTML = '<span>' +event.data + '</span>';
+            $("#message").append(div);
+        };
+
+        websocket.onerror = function (event) {
+            alert("websocket通信发生错误");
+        };
+
+        window.onbeforeunload = function (event) {
+            websocket.close();
+        };
+
+        function send() {
+            websocket.send($("#text").val());
+        }
+
+        function backup() {
+            $.ajax({
+                url:'backup/ntopng/-/2019.02.20-2019.03.01',
+                type:'get',
+                async : false, //默认为true 异步
+                error:function(){
+                    alert('error');
+                },
+                success:function(data){
+                    console.log(data)
+                }
+            });
+        }
+    </script>
+</head>
+<body>
+<form>
+    <div class="form-group">
+        <label>聊天框:</label> <textarea class="form-control" rows="5" id="text">你好啊</textarea>
+    </div>
+    <div class="form-group">
+        <button onclick="send()" type="button" class="btn btn-primary">发送</button>
+        <button onclick="closeWebSocket()" type="button" class="btn btn-danger">关闭</button>
+    </div>
+    <div class="form-group">
+        <button onclick="backup()" type="button" class="btn btn-primary">备份</button>
+    </div>
+</form>
+<div id="message" />
+</body>
+</html>
