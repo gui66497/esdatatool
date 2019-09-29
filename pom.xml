@@ -16,6 +16,8 @@
 
     <properties>
         <java.version>1.8</java.version>
+        <elasticsearch.version>7.2.0</elasticsearch.version>
+        <httpclient.version>4.5.5</httpclient.version>
     </properties>
 
     <dependencies>
@@ -40,6 +42,16 @@
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-websocket</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.elasticsearch.client</groupId>
+            <artifactId>elasticsearch-rest-high-level-client</artifactId>
+            <version>${elasticsearch.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.httpcomponents</groupId>
+            <artifactId>httpclient</artifactId>
+            <version>${httpclient.version}</version>
         </dependency>
     </dependencies>
 

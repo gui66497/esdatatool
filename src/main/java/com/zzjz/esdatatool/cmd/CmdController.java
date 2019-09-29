@@ -2,9 +2,16 @@ package com.zzjz.esdatatool.cmd;
 
 import com.zzjz.esdatatool.bean.EsEntity;
 import com.zzjz.esdatatool.task.CmdRunner;
+import org.apache.http.HttpResponse;
+import org.apache.http.client.HttpClient;
+import org.apache.http.client.methods.HttpHead;
+import org.apache.http.impl.client.HttpClientBuilder;
+import org.apache.http.util.EntityUtils;
+import org.elasticsearch.client.RestHighLevelClient;
 import org.joda.time.DateTime;
 import org.joda.time.format.DateTimeFormat;
 import org.joda.time.format.DateTimeFormatter;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -34,6 +41,9 @@ public class CmdController {
 
     @Value("${threadNum}")
     int threadNum;
+
+    @Autowired
+    RestHighLevelClient restHighLevelClient;
 
     /**
      * 批量备份es表
@@ -98,7 +108,7 @@ public class CmdController {
      * @throws InterruptedException
      */
     @RequestMapping(value = "reindex", method = RequestMethod.POST)
-    public String reindex(@RequestBody EsEntity esEntity) throws InterruptedException {
+    public String reindex(@RequestBody EsEntity esEntity) throws InterruptedException, IOException {
         String index = esEntity.getIndex();
         String dates = esEntity.getDates();
         String separator = esEntity.getSeparator();
@@ -111,14 +121,23 @@ public class CmdController {
         //5个线程去跑命令
         ExecutorService executorService = Executors.newFixedThreadPool(threadNum);
 
+        String startDate;
+        String endDate;
         if (dates.contains("-")) {
-            String startDate = dates.split("-")[0];
-            String endDate = dates.split("-")[1];
-            System.out.println("startDate:" + startDate);
-            System.out.println("endDate:" + endDate);
-            DateTime startTime = DateTime.parse(startDate, format);
-            DateTime endTime = DateTime.parse(endDate, format);
-            while (startTime.isBefore(endTime) || startTime.isEqual(endTime)) {
+            startDate = dates.split("-")[0];
+            endDate = dates.split("-")[1];
+        } else {
+            startDate = dates;
+            endDate = dates;
+        }
+        System.out.println("startDate:" + startDate);
+        System.out.println("endDate:" + endDate);
+        DateTime startTime = DateTime.parse(startDate, format);
+        DateTime endTime = DateTime.parse(endDate, format);
+        while (startTime.isBefore(endTime) || startTime.isEqual(endTime)) {
+            // 判断该索引是否存在 不存在则跳过
+            boolean exist = indexExist(esCon, index + separator + startTime.toString(format));
+            if (exist) {
                 // 1.先执行mapping的导入
                 String mappingCmd = getCmdStr(esEntity, "mapping", startTime.toString(format));
                 runCmd(mappingCmd);
@@ -126,24 +145,8 @@ public class CmdController {
                 String cmd = getCmdStr(esEntity, "data", startTime.toString(format));
                 CmdRunner command = new CmdRunner(cmd);
                 executorService.submit(command);
-                startTime = startTime.plusDays(1);
             }
-        } else {
-            // 1.先执行mapping的导入
-            String mappingCmd = getCmdStr(esEntity, "mapping", dates);
-            /*String mappingCmd = "docker run --rm --net=host -v " + dumpDst + ":/tmp " + dumpImg + " \\\n" +
-                    "  --input=" + esCon + "/" + index + separator + dates + " \\\n" +
-                    "  --output=" + targetEsCon + "/" + index + separator + dates + " \\\n" +
-                    "  --type=mapping";*/
-            runCmd(mappingCmd);
-            // 2.执行data的导入
-            String cmd = getCmdStr(esEntity, "data", dates);
-            /*String cmd = "docker run --rm --net=host -v " + dumpDst + ":/tmp " + dumpImg +" \\\n" +
-                    "  --input=" + esCon + "/" +index + separator + dates + " \\\n" +
-                    "  --output=" + targetEsCon + "/" + index + separator + dates + " \\\n" +
-                    "  --type=data";*/
-            CmdRunner command = new CmdRunner(cmd);
-            executorService.submit(command);
+            startTime = startTime.plusDays(1);
         }
         System.out.println("调用了shutdown");
         executorService.shutdown();
@@ -205,5 +208,28 @@ public class CmdController {
         for (MyWebSocket myWebSocket : webSockets) {
             myWebSocket.sendMessage(msg);
         }
+    }
+
+    /**
+     * 判断索引是否存在.
+     * @param connection es链接
+     * @param index 索引名
+     * @return 结果
+     * @throws IOException IOException
+     */
+    private boolean indexExist(String connection, String index) throws IOException {
+        String url = connection + "/" + index;
+        System.out.println("indexExist的url为" + url);
+        HttpClient client = HttpClientBuilder.create().build();
+        HttpHead head = new HttpHead(url);
+        HttpResponse response = client.execute(head);
+        return response.getStatusLine().getStatusCode() == 200;
+    }
+
+    public static void main(String[] args) throws IOException {
+        HttpClient client = HttpClientBuilder.create().build();
+        HttpHead head = new HttpHead("http://192.168.1.188:9200/eventlog_2019.05.24");
+        HttpResponse expListResponse = client.execute(head);
+        String json = EntityUtils.toString(expListResponse.getEntity());
     }
 }
